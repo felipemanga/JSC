@@ -1,9 +1,10 @@
 import * as ir from './IR.js'
-import std from './templates/std.js'
-import blit from './templates/blit.js'
-import pico from './templates/pico.js'
-import pokitto from './templates/pokitto.js'
-import meta from './templates/meta.js'
+import {std} from './templates/std.js'
+import {blit} from './templates/blit.js'
+import {pico} from './templates/pico.js'
+import {pokitto} from './templates/pokitto.js'
+import {meta} from './templates/meta.js'
+import {espboy} from './templates/espboy.js'
 
 const platform = {
     std,
