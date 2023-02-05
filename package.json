@@ -1,0 +1,17 @@
+{
+    "name": "jsc",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "node node.js"
+    },
+    "author": "FManga",
+    "license": "ISC",
+    "dependencies": {
+        "escodegen": "^2.0.0",
+        "esmangle": "^1.0.1",
+        "esprima": "^4.0.1"
+    }
+}
