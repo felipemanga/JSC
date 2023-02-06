@@ -98,6 +98,7 @@ class ProgramParser {
                 this.parse(b);
                 if (JSC.opts.cancel) {
                     JSC.opts.cancel = false;
+                    node.body.splice(node.body.indexOf(b) - 1, node.body.length);
                     break;
                 }
             };
