@@ -114,6 +114,8 @@ class ProgramParser {
     }
 
     IfStatement(node, block) {
+        if (block && block.debug == 'if')
+            block = null;
         block = block || new ir.Scope();
         this.scope.add(block);
         block.debug = 'if';
