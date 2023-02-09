@@ -366,6 +366,41 @@ class ProgramParser {
         this.scope.add(new ir.AssignmentExpression(node.operator));
     }
 
+    ConditionalExpression(node) {
+        let result = new ir.Var();
+        this.scope.add(result);
+
+        let block = new ir.Scope();
+        this.scope.add(block);
+        block.debug = 'op_?';
+
+        this.push(block.addEnterCondition(), _=>{
+            this.discardResult = 0;
+            this.parse(node.test);
+            this.discardResult = 1;
+        });
+
+        this.push(block.addFailEnter(), _=>{
+            this.discardResult = 0;
+            this.scope.add(new ir.LookUp(result.id));
+            this.parse(node.alternate);
+            this.scope.add(new ir.AssignmentExpression("="));
+            this.scope.add(new ir.Pop());
+            this.discardResult = 1;
+        });
+
+        this.push(block, _=>{
+            this.discardResult = 0;
+            this.scope.add(new ir.LookUp(result.id));
+            this.parse(node.consequent, block);
+            this.scope.add(new ir.AssignmentExpression("="));
+            this.scope.add(new ir.Pop());
+            this.discardResult = 1;
+        });
+
+        this.scope.add(new ir.LookUp(result.id));
+    }
+
     ExpressionStatement(node) {
         if (node.expression.type == "Literal" && typeof node.expression.value == "string") {
             JSC.pragma(node.expression.value);
