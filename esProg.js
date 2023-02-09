@@ -172,6 +172,9 @@ class ProgramParser {
             const it = new ir.Var();
             block.add(it);
 
+            const max = new ir.Var();
+            block.add(max);
+
             let val;
 
             this.push(block.addPreEnter(), preEnter=>{
@@ -190,14 +193,19 @@ class ProgramParser {
                 val = preEnter.find(node.left.declarations[0].id.name, true);
                 if (!val)
                     this.error("Could not find iterator " + node.left.declarations[0].id.name);
+
+                preEnter.add(new ir.LookUp(max.id));
+                preEnter.add(new ir.LookUp(arr.id));
+                preEnter.add(new ir.Deref());
+                preEnter.add(new ir.Literal("length"));
+                preEnter.add(new ir.BinaryExpression("."));
+                preEnter.add(new ir.AssignmentExpression("="));
+                preEnter.add(new ir.Pop());
             });
 
             this.push(block.addEnterCondition(), cond=>{
                 cond.add(new ir.LookUp(it.id));
-                cond.add(new ir.LookUp(arr.id));
-                cond.add(new ir.Deref());
-                cond.add(new ir.Literal("length"));
-                cond.add(new ir.BinaryExpression("."));
+                cond.add(new ir.LookUp(max.id));
                 cond.add(new ir.BinaryExpression("<"));
             });
 
