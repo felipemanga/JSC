@@ -114,8 +114,6 @@ class ProgramParser {
     }
 
     IfStatement(node, block) {
-        if (block && block.debug == 'if')
-            block = null;
         block = block || new ir.Scope();
         this.scope.add(block);
         block.debug = 'if';
@@ -133,7 +131,7 @@ class ProgramParser {
         }
 
         this.push(block, _=>{
-            this.parse(node.consequent, block);
+            this.parse(node.consequent, node.consequent.type == "BlockStatement" ? block : null);
         });
     }
 
@@ -154,7 +152,7 @@ class ProgramParser {
         });
 
         this.push(block, _=>{
-            this.parse(node.body, block);
+            this.parse(node.body, node.body.type == "BlockStatement" ? block : null);
         });
     }
 
@@ -227,7 +225,7 @@ class ProgramParser {
             block.add(new ir.Deref());
             block.add(new ir.BinaryExpression("."));
             block.add(new ir.AssignmentExpression("="));
-            this.parse(node.body, block);
+            this.parse(node.body, node.body.type == "BlockStatement" ? block : null);
         });
     }
 
@@ -262,7 +260,7 @@ class ProgramParser {
                 this.scope.add(new ir.Literal(true));
             });
 
-            this.parse(node.body, block);
+            this.parse(node.body, node.body.type == "BlockStatement" ? block : null);
         });
     }
 
@@ -279,7 +277,7 @@ class ProgramParser {
         });
 
         this.push(block, _=>{
-            this.parse(node.body, block);
+            this.parse(node.body, node.body.type == "BlockStatement" ? block : null);
         });
     }
 
