@@ -1,49 +1,7 @@
-const esprima = require('esprima');
-const escodegen = require('escodegen');
-const esmangle = require('esmangle');
-
 import * as ir from './IR.js'
 
 function toString(ast) {
-    // const passes = [
-    //     // "pass/hoist-variable-to-arguments",
-    //     "pass/transform-dynamic-to-static-property-access",
-    //     "pass/transform-dynamic-to-static-property-definition",
-    //     "pass/transform-immediate-function-call",
-    //     "pass/transform-logical-association",
-    //     "pass/reordering-function-declarations",
-    //     "pass/remove-unused-label",
-    //     "pass/remove-empty-statement",
-    //     "pass/remove-wasted-blocks",
-    //     // "pass/transform-to-compound-assignment",
-    //     // "pass/transform-to-sequence-expression",
-    //     // "pass/transform-branch-to-expression",
-    //     "pass/transform-typeof-undefined",
-    //     "pass/reduce-sequence-expression",
-    //     "pass/reduce-branch-jump",
-    //     "pass/reduce-multiple-if-statements",
-    //     "pass/dead-code-elimination",
-    //     "pass/remove-side-effect-free-expressions",
-    //     "pass/remove-context-sensitive-expressions",
-    //     "pass/tree-based-constant-folding",
-    //     //"pass/drop-variable-definition",
-    //     "pass/remove-unreachable-branch"
-    // ].map(pass => esmangle.pass.require(pass));
-
-    // const post = [
-    //     'post/transform-static-to-dynamic-property-access',
-    //     //'post/transform-infinity',
-    //     //'post/rewrite-boolean',
-    //     //'post/rewrite-conditional-expression'
-    // ].map(pass => esmangle.pass.require(pass));
-
-    // const pipeline = [
-    //     passes,
-    //     { once: true, pass: post }
-    // ];
-
-    // var optimized = esmangle.optimize(ast, pipeline);
-
+    const escodegen = require('escodegen');
     return escodegen.generate(ast, {
         format: {
             indent: {
