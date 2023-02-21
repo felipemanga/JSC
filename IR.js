@@ -173,6 +173,25 @@ export class LookUp extends Expr {
 export class Literal extends Expr {
     constructor(value) {
         super();
+
+        this.declType = typeof value;
+        if (this.declType == "number") {
+            if ((value|0) == value) {
+                this.declType = "int32_t";
+            } else {
+                this.declType = "Float";
+            }
+        }
+
+        if (this.declType == "boolean") {
+            this.declType = "bool";
+        }
+
+        this.type = this.declType;
+
+        this.hasCTV = true;
+        this.CTV = value;
+
         this.value = value;
     }
     toJSON() {
@@ -195,6 +214,47 @@ export class Var {
         this.read = 0;
         this.write = 0;
         this.program = null;
+
+        this.declType = null;
+        this.type = null;
+        this._hasCTV = false;
+        this._CTV = undefined;
+    }
+
+    get hasCTV() {
+        return this._hasCTV;
+    }
+
+    set hasCTV(value) {
+        if (this.kind == "const" && this._hasCTV) {
+            console.trace();
+            throw "setting hasCTV " + this._hasCTV + " " + value;
+        }
+        this._hasCTV = value;
+    }
+
+    get CTV() {
+        return this._CTV;
+    }
+
+    set CTV(value) {
+        if (this.kind == "const" && this._hasCTV) {
+            console.trace();
+            throw "double assign on const";
+        }
+        this._hasCTV = true;
+        this._CTV = value;
+    }
+
+    setType(type) {
+        if (this.declType != type) {
+            this.declType = null;
+        }
+        this.type = type;
+    }
+
+    setDeclType(type) {
+        this.declType = this.type = type;
     }
 
     setProgram(prog) {

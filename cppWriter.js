@@ -15,6 +15,40 @@ const platform = {
     meta
 };
 
+const binOpName = {
+    "+":"add",
+    "-":"sub",
+    "*":"mul",
+    "%":"mod",
+    "/":"div",
+    "<":"lt",
+    "<=":"leq",
+    ">":"gt",
+    ">=":"geq",
+    "!=":"neq",
+    "==":"eq",
+    "===":"seq",
+    "!==":"sneq",
+    "|":"or",
+    "&":"and",
+    "^":"xor",
+    "<<":"shl",
+    ">>":"shr",
+    ">>>":"sru",
+
+    "+=":"add",
+    "-=":"sub",
+    "*=":"mul",
+    "%=":"mod",
+    "/=":"div",
+    "|=":"or",
+    "&=":"and",
+    "^=":"xor",
+    "<<=":"shl",
+    ">>=":"shr",
+    ">>>=":"sru"
+};
+
 let cpp;
 
 function literalToString(value, reg) {
@@ -31,7 +65,7 @@ function literalToString(value, reg) {
     } else if (value === null) {
         ret = '(js::Object*){}';
     } else if ((value|0) != value) {
-        ret += 'f';
+        ret = `js::Float(${ret}f)`;
     } else {
         ret = `int32_t(${ret})`;
     }
@@ -78,7 +112,7 @@ function encode(node, reg)  {
                     return `RESOURCEREF(${node.variable.value})`;
                 }
             }
-            return `js::get(${encode(ctx)}, ${encode(node.variable, true)})`;
+            return `js::get(${encode(ctx)}, ${encode(node.variable, false)})`;
         } else if (ctx instanceof ir.Scope) {
             return encode(ctx.find(node.variable, true));
         }
@@ -203,9 +237,26 @@ class CPP {
     declare(v) {
         return v.kind == "capture"
             ? `js::Tagged& ${encode(v)} = *js::getTaggedPtr(js::to<js::Object*>(${encode(this.method.args)}), ${literalToString(v.name, true)}, true);`
+
+            : v.kind == "cache"
+            ? `js::Tagged& ${encode(v)} = *js::getTaggedPtr(${encode(this.method.index["this"])}.object(), ${literalToString(v.name, true)}, true, true);`
+
             : v.isCaptured()
             ? `js::Tagged& ${encode(v)} = *js::set(${encode(this.method.context)}, ${literalToString(v.name, true)}, {});`
-            : `js::Local ${encode(v)}; // ${v.kind}`
+
+            : v.declType == "int32_t"
+            ? `int32_t ${encode(v)}; // ${v.kind}`
+
+            : v.declType == "uint32_t"
+            ? `uint32_t ${encode(v)}; // ${v.kind}`
+
+            : v.declType == "Float"
+            ? `js::Float ${encode(v)}; // ${v.kind}`
+
+            : v.declType == "string"
+            ? `js::BufferRef ${encode(v)}; // ${v.kind}`
+
+            : `js::Local ${encode(v)}; // ${v.kind} ${v.declType}`
     }
 
     Scope(node, endWithReturn) {
@@ -213,7 +264,10 @@ class CPP {
         const setup = [];
         const before = [`// begin ${node.debug}`, (node.transparent ? '' : '{'), setup, decls];
         const after = [(node.transparent ? '' : '}'), `// end ${node.debug}`];
-        const children = node.children.map(child => this.write(child));
+        const children = [];
+
+        node.children.forEach(child => {if (!(child instanceof ir.Method)) children.push(this.write(child))});
+        node.children.forEach(child => {if ((child instanceof ir.Method)) children.push(this.write(child))});
 
         if (endWithReturn) {
             const lastChild = node.children[node.children.length - 1];
@@ -295,18 +349,12 @@ class CPP {
                 continue;
             varindex[v.id] = v;
             let decl = this.declare(v);
+            if (v.kind != "const")
+                v.hasCTV = false;
             if (node == this.main && v.name) {
                 this.out.unshift(decl);
             } else {
                 decls.push(decl);
-            }
-        }
-
-        if (node instanceof ir.Method) {
-            decls.unshift('PROFILER;');
-            const that = node.index["this"];
-            if (that.read || that.write) {
-                decls.push(`js::initThis(${encode(node.index["this"])}, ${encode(node.args)}, ${node.guessObjectSize()}, isNew);`);
             }
         }
 
@@ -325,7 +373,10 @@ class CPP {
         const lookup = this.stack.pop();
         if (lookup instanceof ir.LookUp) {
             const ctx = lookup.container || lookup.parent;
-            if (ctx instanceof ir.Var) {
+            if (ctx === this.method.that && (lookup.variable instanceof ir.Literal)) {
+                ctx.read++;
+                this.stack.push(this.method.cached(lookup.variable.value));
+            } else if ((ctx instanceof ir.Var) || (ctx instanceof ir.Literal)) {
                 const variable = new ir.Var();
                 this.method.add(variable);
                 this.stack.push(variable);
@@ -397,7 +448,15 @@ class CPP {
             let v = ctx.find(lookup.variable, true);
             if (!v)
                 this.error(`Variable ${lookup.variable} not defined`);
+
+            if (v.kind == "const") {
+                v.setDeclType(right.type);
+                if (right.hasCTV)
+                    v.CTV = right.CTV;
+            }
+
             ret.push(`${encode(v)} = ${encode(right)};`);
+
             v.write++;
         }
         this.stack.push(right);
@@ -406,13 +465,12 @@ class CPP {
 
     UnaryExpression(node) {
         const lookup = this.stack.pop();
-        const tmp = new ir.Var();
-        node.parent.method.add(tmp);
         const opName = {
             true:{
                 "++":"preinc",
                 "--":"predec",
                 "!":"not",
+                "~":"bitnot",
                 "-":"neg",
                 "+":"pos"
             },
@@ -421,8 +479,39 @@ class CPP {
                 "--":"dec"
             }
         }[!!node.prefix][node.operator];
+
+        let tmp = new ir.Var();
+
+        if (opName == "bitnot") {
+            if (lookup.hasCTV) {
+                tmp = new ir.Literal(~lookup.value);
+            } else {
+                tmp.setDeclType("int32_t");
+            }
+        } else if (opName == "not") {
+            if (lookup.hasCTV) {
+                tmp = new ir.Literal(!lookup.value);
+            } else {
+                tmp.setDeclType("bool");
+            }
+        } else if (opName == "neg") {
+            if (lookup.hasCTV) {
+                tmp = new ir.Literal(-lookup.value);
+            } else {
+                tmp.setDeclType("Float");
+            }
+        } else {
+            tmp.setDeclType("Float");
+        }
+
         this.stack.push(tmp);
-        return `js::op_${opName}(${encode(tmp)}, ${encode(lookup)}); // ${node.operator}`;
+
+        if (tmp instanceof ir.Var) {
+            node.parent.method.add(tmp);
+            let ret = `js::op_${opName}(${encode(tmp)}, ${encode(lookup)}); // ${node.operator}`;
+            lookup.type = tmp.type;
+            return ret;
+        }
     }
 
     BinaryExpression(node) {
@@ -438,49 +527,250 @@ class CPP {
             this.stack.push(lookup);
             return out;
         }
-        const tmp = new ir.Var();
+
+        let tmp = new ir.Var();
+        const op = binOpName[node.operator] || node.operator;
+
+        switch (op) {
+        case "add":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  + ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV + right.CTV);
+            } else {
+                tmp.hasCTV = false;
+                if (left.declType == "Object*" || right.declType == "Object*" || !left.declType || !right.declType) {
+                    // tmp.setDeclType("js::Local");
+                } else if (left.declType == "string" || right.declType == "string") {
+                    tmp.setDeclType("string");
+                } else if (left.declType == "Undefined" || right.declType == "Undefined") {
+                    tmp.setDeclType("Undefined");
+                } else if (left.declType == "Float" || right.declType == "Float") {
+                    tmp.setDeclType("Float");
+                } else {
+                    tmp.setDeclType("int32_t");
+                }
+            }
+
+            break;
+
+        case "sub":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  - ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV - right.CTV);
+            } else {
+                tmp.hasCTV = false;
+                if (left.declType == "int32_t" && right.declType == "int32_t") {
+                    tmp.setDeclType("int32_t");
+                } else if (left.declType == "uint32_t" && right.declType == "uint32_t") {
+                    tmp.setDeclType("uint32_t");
+                } else {
+                    tmp.setDeclType("Float");
+                }
+            }
+
+            break;
+
+        case "mul":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  * ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV * right.CTV);
+            } else {
+                tmp.hasCTV = false;
+                if (left.declType == "int32_t" && right.declType == "int32_t") {
+                    tmp.setDeclType("int32_t");
+                } else if (left.declType == "uint32_t" && right.declType == "uint32_t") {
+                    tmp.setDeclType("uint32_t");
+                } else {
+                    tmp.setDeclType("Float");
+                }
+            }
+
+            break;
+
+        case "mod":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  - ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV % right.CTV);
+            } else {
+                tmp.hasCTV = false;
+                if (left.declType == "int32_t" && right.declType == "int32_t") {
+                    tmp.setDeclType("int32_t");
+                } else if (left.declType == "uint32_t" && right.declType == "uint32_t") {
+                    tmp.setDeclType("uint32_t");
+                } else {
+                    tmp.setDeclType("Float");
+                }
+            }
+
+            break;
+
+        case "div":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  - ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV / right.CTV);
+            } else {
+                tmp.hasCTV = false;
+                if (left.declType == "int32_t" && right.declType == "int32_t") {
+                    tmp.setDeclType("int32_t");
+                } else if (left.declType == "uint32_t" && right.declType == "uint32_t") {
+                    tmp.setDeclType("uint32_t");
+                } else {
+                    tmp.setDeclType("Float");
+                }
+            }
+
+            break;
+
+        case "lt":
+            tmp.setDeclType("int32_t");
+            tmp.hasCTV = left.hasCTV && right.hasCTV;
+            if (tmp.hasCTV) {
+                tmp.CTV = left.CTV < right.CTV;
+            }
+            break;
+
+        case "leq":
+            tmp.setDeclType("int32_t");
+            tmp.hasCTV = left.hasCTV && right.hasCTV;
+            if (tmp.hasCTV) {
+                tmp.CTV = left.CTV <= right.CTV;
+            }
+            break;
+
+        case "gt":
+            tmp.setDeclType("int32_t");
+            tmp.hasCTV = left.hasCTV && right.hasCTV;
+            if (tmp.hasCTV) {
+                tmp.CTV = left.CTV > right.CTV;
+            }
+            break;
+
+        case "geq":
+            tmp.setDeclType("int32_t");
+            tmp.hasCTV = left.hasCTV && right.hasCTV;
+            if (tmp.hasCTV) {
+                tmp.CTV = left.CTV >= right.CTV;
+            }
+            break;
+
+        case "neq":
+            tmp.setDeclType("int32_t");
+            tmp.hasCTV = left.hasCTV && right.hasCTV;
+            if (tmp.hasCTV) {
+                tmp.CTV = left.CTV != right.CTV;
+            }
+            break;
+
+        case "eq":
+            tmp.setDeclType("int32_t");
+            tmp.hasCTV = left.hasCTV && right.hasCTV;
+            if (tmp.hasCTV) {
+                tmp.CTV = left.CTV == right.CTV;
+            }
+            break;
+
+        case "seq":
+            tmp.setDeclType("int32_t");
+            tmp.hasCTV = left.hasCTV && right.hasCTV;
+            if (tmp.hasCTV) {
+                tmp.CTV = left.CTV === right.CTV;
+            }
+            break;
+
+        case "sneq":
+            tmp.setDeclType("int32_t");
+            tmp.hasCTV = left.hasCTV && right.hasCTV;
+            if (tmp.hasCTV) {
+                tmp.CTV = left.CTV !== right.CTV;
+            }
+            break;
+
+        case "or":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  | ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV | right.CTV);
+            } else {
+                tmp.setDeclType("int32_t");
+            }
+
+            break;
+
+        case "and":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  | ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV & right.CTV);
+            } else {
+                tmp.setDeclType("int32_t");
+            }
+
+            break;
+
+        case "xor":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  ^ ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV ^ right.CTV);
+            } else {
+                tmp.setDeclType("int32_t");
+            }
+
+            break;
+
+        case "shl":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  | ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV << right.CTV);
+            } else {
+                tmp.setDeclType("int32_t");
+            }
+
+            break;
+
+        case "shr":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  | ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV >> right.CTV);
+            } else {
+                tmp.setDeclType("int32_t");
+            }
+
+            break;
+
+        case "sru":
+            // console.log("CTV ", left.hasCTV, left.name, "(", left.CTV, ")  | ", right.hasCTV, right.name, "(", right.CTV, ")");
+
+            if (left.hasCTV && right.hasCTV) {
+                tmp = new ir.Literal(left.CTV >>> right.CTV);
+            } else {
+                tmp.setDeclType("int32_t");
+            }
+
+            break;
+        }
+
         node.parent.add(tmp);
         this.stack.push(tmp);
-        tmp.write++;
-        const opName = {
-            "+":"add",
-            "-":"sub",
-            "*":"mul",
-            "%":"mod",
-            "/":"div",
-            "<":"lt",
-            "<=":"leq",
-            ">":"gt",
-            ">=":"geq",
-            "!=":"neq",
-            "==":"eq",
-            "===":"seq",
-            "!==":"sneq",
-            "|":"or",
-            "&":"and",
-            "^":"xor",
-            "<<":"shl",
-            ">>":"shr",
-            ">>>":"sru",
 
-            "+=":"add",
-            "-=":"sub",
-            "*=":"mul",
-            "%=":"mod",
-            "/=":"div",
-            "|=":"or",
-            "&=":"and",
-            "^=":"xor",
-            "<<=":"shl",
-            ">>=":"shr",
-            ">>>=":"sru"
-        };
-        out.push(`js::op_${opName[node.operator] || node.operator}(${encode(tmp)}, ${local(left)}, ${local(right)});`);
+        if (tmp instanceof ir.Var) {
+            tmp.write++;
+            out.push(`js::op_${op}(${encode(tmp)}, ${encode(left)}, ${encode(right)});`);
+        }
+
         return out;
     }
 
     Array(node) {
         const array = new ir.Var();
+        array.setDeclType("Object*");
         this.method.add(array);
         array.write++;
         const out = [];
@@ -494,12 +784,12 @@ class CPP {
         }
 
         this.stack.push(array);
-
         return out;
     }
 
     Objekt(node) {
         const obj = new ir.Var();
+        obj.setDeclType("Object*");
         this.method.add(obj);
         obj.write++;
         const out = [];
@@ -534,6 +824,7 @@ class CPP {
         var ret;
         if (!node.discardResult) {
             ret = new ir.Var();
+            ret.hasCTV = false;
             this.method.add(ret);
         }
 
