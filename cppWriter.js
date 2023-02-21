@@ -342,6 +342,17 @@ class CPP {
             setup.push(`${encode(node.context)} = js::alloc(${Object.keys(node.captured).length});`);
         }
 
+        if (node.that) {
+            setup.unshift(`PROFILER_NAMED("${this.method.name}");`);
+
+            const that = node.that;
+            varindex[that.id] = that;
+            if (that.read || that.write) {
+                setup.push(this.declare(that));
+                decls.push(`js::initThis(${encode(that)}, ${encode(node.args)}, ${node.guessObjectSize()}, isNew);`);
+            }
+        }
+
         const locals = node.index;
         for (let key in locals) {
             let v = locals[key];
@@ -440,7 +451,14 @@ class CPP {
             ctx.read++;
             if (lookup.variable instanceof ir.Literal) {
                 ctx.addDeref(lookup.variable.value);
-                ret.push(`js::set(${encode(ctx)}, ${encode(lookup.variable, true)}, ${encode(right)});`);
+                if (ctx == this.method.that) {
+                    ctx.read++;
+                    let v = this.method.cached(lookup.variable.value);
+                    // v.setType(right.declType || right.type);
+                    ret.push(`${encode(v)} = ${encode(right)};`);
+                } else {
+                    ret.push(`js::set(${encode(ctx)}, ${encode(lookup.variable, true)}, ${encode(right)});`);
+                }
             } else {
                 ret.push(`js::set(${encode(ctx)}, ${encode(lookup.variable)}, ${encode(right)});`);
             }

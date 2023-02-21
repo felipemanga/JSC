@@ -496,11 +496,13 @@ export class Method extends Scope {
         this.method = this;
         this.args = new Var();
         this.add(this.args);
-        this.add(new Var("const", "this"));
+        this.that = new Var("const", "this");
+        this.add(this.that);
         this.isNative = false;
         this.isClass = false;
         this.captures = undefined;
         this.captured = undefined;
+        this.caches = undefined;
         this.returnable = true;
     }
 
@@ -530,6 +532,20 @@ export class Method extends Scope {
             args: this.args,
             isNative: this.isNative
         });
+    }
+
+    cached(name) {
+        if (!this.caches) {
+            this.caches = Object.create(null);
+        }
+        let ret = this.caches[name];
+        if (!ret) {
+            ret = this.caches[name] = new Var("cache");
+            ret.hasCTV = false;
+            this.add(ret);
+            ret.name = name;
+        }
+        return ret;
     }
 
     capture(ext) {
