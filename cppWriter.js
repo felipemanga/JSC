@@ -125,6 +125,7 @@ class CPP {
         this.minStringTable = {};
         this.globals = {};
         this.stringTable = [];
+        this.header = [];
         this.out = [];
         this.method = null;
         this.indent = 0;
@@ -203,6 +204,17 @@ class CPP {
                 return `STRDECL(_str${index}, ${size}, ${str});`;
             })
         ]);
+    }
+
+    Inline(node) {
+        if (node.backend === "cpp") {
+            if (node.target == "inline") {
+                return node.code;
+            }
+            if (node.target == "header") {
+                this.header.push(node.code);
+            }
+        }
     }
 
     Break(node) {
@@ -909,7 +921,7 @@ class CPP {
             return encode(sym);
         });
 
-        return str;
+        return this.header.join('\n') + '\n' + str;
 
         function toString(arr) {
             for (let i = 0, max = arr.length; i < max; ++i) {

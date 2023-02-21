@@ -402,6 +402,14 @@ class ProgramParser {
     ExpressionStatement(node) {
         if (node.expression.type == "Literal" && typeof node.expression.value == "string") {
             JSC.pragma(node.expression.value);
+            if (JSC.opts["inline-cpp"]) {
+                this.scope.add(new ir.Inline("cpp", JSC.opts["inline-cpp"], "inline"));
+                JSC.opts["inline-cpp"] = null;
+            }
+            if (JSC.opts["header-cpp"]) {
+                this.scope.add(new ir.Inline("cpp", JSC.opts["header-cpp"], "header"));
+                JSC.opts["header-cpp"] = null;
+            }
             return;
         }
 

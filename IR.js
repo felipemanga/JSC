@@ -202,6 +202,20 @@ export class Literal extends Expr {
     }
 }
 
+export class Inline {
+    constructor(backend, code, target) {
+        this.backend = backend;
+        this.code = code && typeof code.join == 'function' ? code.join(' ') : code + "";
+        this.target = target;
+    }
+
+    setProgram(prog) {}
+
+    toJSON() {
+        return {constructor: this.constructor.name};
+    }
+}
+
 export class Var {
     constructor(kind = "var", name = undefined, location = null) {
         this.id = getUniqueId();
@@ -481,6 +495,9 @@ export class Scope extends Expr {
             obj.parent.children.push(obj);
             obj.method = this.method;
         } else if (obj instanceof Expr) {
+            this.children.push(obj);
+            obj.parent = this;
+        } else if (obj instanceof Inline) {
             this.children.push(obj);
             obj.parent = this;
         } else {
