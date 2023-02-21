@@ -831,7 +831,11 @@ class CPP {
         for (let i = 0; i < node.length; ++i) {
             let value = this.stack.pop();
             let key = this.stack.pop();
-            values[node.length - i - 1] = `js::set(${strobj}, ${literalToString(key.variable, true)}, ${encode(value)});`;
+            if (key instanceof ir.LookUp)
+                key = key.variable;
+            else if (key instanceof ir.Literal)
+                key = key.value;
+            values[node.length - i - 1] = `js::set(${strobj}, ${literalToString(key, true)}, ${encode(value)});`;
         }
 
         this.stack.push(obj);
