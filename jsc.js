@@ -14,7 +14,9 @@ const writers = {
 
 const transformers = {
     js:[esAST, esProg],
-    raw:[dataProg]
+    raw:[dataProg],
+    u32:[JSON.parse, (obj) => {obj.type = 'uint32_t'; return obj;}, dataProg],
+    u8:[JSON.parse, (obj) => {obj.type = 'uint8_t'; return obj;}, dataProg]
 }
 
 export class JSC {

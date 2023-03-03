@@ -1,6 +1,7 @@
 export const espboy = `
 #define RESOURCEREF(x) ((js::ResourceRef*)res::x)
-#define RESOURCEDECL(x) const uint8_t PROGMEM x[]
+#define RESOURCEDECL_T(T, x) const T PROGMEM x[]
+#define RESOURCEDECL(x) RESOURCEDECL_T(uint8_t, x)
 #define PRINT(str) Serial.print((const char*)str)
 #define PRINTLN() Serial.print("\\n");
 #define STRDECL(VAR, LEN, STR) __attribute__ ((aligned)) const std::array<uint8_t, sizeof(js::Buffer) + LEN> VAR = js::bufferFrom<LEN>(STR);

@@ -82,8 +82,8 @@ function literalToString(value, reg) {
 }
 
 function local(node) {
-    if (node instanceof ir.Literal)
-        return `{${encode(node)}}`;
+    // if (node instanceof ir.Literal)
+    //     return `${encode(node)}`;
     return encode(node);
 }
 
@@ -95,9 +95,15 @@ function encode(node, reg)  {
     case "Var":
         if (cpp.globals[node.id])
             return node.name;
+
+        // if (node.hasCTV) {
+        //     return literalToString(node.CTV, !!reg);
+        // }
+
         return node.name ?
             `_${node.id}/*${node.name}*/`
             : `_${node.id}`;
+
     case "Literal":
         return literalToString(node.value, !!reg);
     case "LookUp":
@@ -906,16 +912,66 @@ class CPP {
             if (key == 'translated')
                 return translated;
             if (key == 'resources') {
-                return Object.keys(this.program.resourceData)
-                    .map(res => {
-                        const src = this.program.resourceData[res];
-                        if (!src)
-                            return '// RESOURCEDECL(${res}); // built-in';
+                const acc = [];
+                const resources = Object.keys(this.program.resourceData)
+                      .sort((l, r) => (typeof l) < (typeof r) ? -1 : 1); // objects after strings
+
+                for (let res of resources) {
+                    const src = this.program.resourceData[res];
+                    if (!src || typeof src == "string")
+                        continue;
+
+                    if (!Array.isArray(src))
+                        continue;
+
+                    const type = src.type || 'uintptr_t';
+                    acc.push(`extern const ${type} ${res}[];`);
+                }
+
+                for (let res of resources) {
+                    const src = this.program.resourceData[res];
+                    if (!src)
+                        continue;// `// RESOURCEDECL(${res}); // built-in`;
+                    if (typeof src == "string") {
                         const out = [];
                         for (let i = 0, len = src.length; i < len; i += 2)
                             out.push(parseInt(src.substr(i, 2), 16));
-                        return `RESOURCEDECL(${res}) = {${out.join(',')}};`;
-                    }).join('\n');
+                        acc.push(`RESOURCEDECL(${res}) = {${out.join(',')}};`);
+                        continue;
+                    }
+                    if (Array.isArray(src)) {
+                        const type = src.type || 'uintptr_t';
+                        const out = [];
+                        for (let el of src) {
+                            if (typeof el == 'object' && el) {
+                                if ('h' in el) {
+                                    out.push(`js::hash(${JSON.stringify(el.h)})`);
+                                    continue;
+                                }
+
+                                if (typeof el.r == 'string') {
+                                    const name = el.r.split('/').pop().split('.')[0].replace(/^[^a-zA-Z_]+|[^a-zA-Z0-9_]+/gi, '');
+                                    let val = typeof el.o === 'number' ? `(${name} + ${el.o|0})` : name;
+                                    if (type === 'uint32_t' || type == 'uintptr_t') {
+                                        out.push(`${type}(${val})`);
+                                    } else if (type === 'uint8_t') {
+                                        out.push(`${type}(uintptr_t(${val}) >>  0)`);
+                                        out.push(`${type}(uintptr_t(${val}) >>  8)`);
+                                        out.push(`${type}(uintptr_t(${val}) >> 16)`);
+                                        out.push(`${type}(uintptr_t(${val}) >> 24)`);
+                                    }
+                                    continue;
+                                }
+                            }
+                            if (typeof el === 'number') {
+                                out.push(el | 0);
+                                continue;
+                            }
+                        }
+                        acc.push(`const ${type} ${res}[] = {${out.join(',')}};`);
+                    }
+                }
+                return acc.join('\n');
             }
             let sym = this.main;
             if (key != 'main')

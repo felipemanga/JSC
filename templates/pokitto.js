@@ -1,6 +1,7 @@
 export const pokitto = `
 #define RESOURCEREF(x) ((js::ResourceRef*)resource::x)
-#define RESOURCEDECL(x) const uint8_t x[]
+#define RESOURCEDECL_T(T, x) const T x[]
+#define RESOURCEDECL(x) RESOURCEDECL_T(uint8_t, x)
 #define PRINT(str) LOG((const char*)(str))
 #define PRINTLN() LOG("\\n");
 #define STRDECL(VAR, LEN, STR) __attribute__ ((aligned)) const std::array<uint8_t, sizeof(js::Buffer) + LEN> VAR = js::bufferFrom<LEN>(STR);
