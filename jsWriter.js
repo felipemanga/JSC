@@ -27,7 +27,7 @@ export function jsWriter(program, opts) {
                 for (let i = 0, len = src.length; i < len; i += 2)
                     out.push(parseInt(src.substr(i, 2), 16));
                 return `R.${clean} = Uint8Array.from([${out.join(',')}]);`;
-            } else {
+            } else if (src) {
                 if (Array.isArray(src)) {
                     for (let el of src) {
                         if (el && typeof el == "object" && el.r)
