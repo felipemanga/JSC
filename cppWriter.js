@@ -927,7 +927,7 @@ class CPP {
                         continue;
 
                     const type = src.type || 'uintptr_t';
-                    acc.push(`extern const ${type} ${res}[];`);
+                    acc.push(`extern RESOURCEDECL_T(${type}, ${res});`);
                 }
 
                 for (let res of resources) {
@@ -966,11 +966,11 @@ class CPP {
                                 }
                             }
                             if (typeof el === 'number') {
-                                out.push(el | 0);
+                                out.push('0x' + (el | 0).toString(16));
                                 continue;
                             }
                         }
-                        acc.push(`const ${type} ${res}[] = {${out.join(',')}};`);
+                        acc.push(`RESOURCEDECL_T(${type}, ${res}) = {${out.join(',')}};`);
                     }
                 }
                 return acc.join('\n');
